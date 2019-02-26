@@ -58,7 +58,7 @@ optim::de_int(arma::vec& init_out_vals, std::function<double (const arma::vec& v
     const arma::vec par_initial_ub = (settings.de_initial_ub.n_elem == n_vals) ? settings.de_initial_ub : init_out_vals + 0.5;
 
     const bool vals_bound = settings.vals_bound;
-    
+
     const arma::vec lower_bounds = settings.lower_bounds;
     const arma::vec upper_bounds = settings.upper_bounds;
 
@@ -70,10 +70,10 @@ optim::de_int(arma::vec& init_out_vals, std::function<double (const arma::vec& v
     = [opt_objfn, vals_bound, bounds_type, lower_bounds, upper_bounds] (const arma::vec& vals_inp, arma::vec* grad_out, void* opt_data) \
     -> double
     {
-        if (vals_bound) 
+        if (vals_bound)
         {
             arma::vec vals_inv_trans = inv_transform(vals_inp, bounds_type, lower_bounds, upper_bounds);
-            
+
             return opt_objfn(vals_inv_trans,nullptr,opt_data);
         }
         else
@@ -88,10 +88,14 @@ optim::de_int(arma::vec& init_out_vals, std::function<double (const arma::vec& v
     arma::vec objfn_vals(n_pop);
     arma::mat X(n_pop,n_vals), X_next(n_pop,n_vals);
 
+#ifdef OPTIM_USE_TBB
+    tbb::parallel_for<size_t>(0, n_pop, [&](size_t i)
+#else
 #ifdef OPTIM_USE_OMP
     #pragma omp parallel for
 #endif
     for (size_t i=0; i < n_pop; i++)
+#endif
     {
         X_next.row(i) = par_initial_lb.t() + (par_initial_ub.t() - par_initial_lb.t())%arma::randu(1,n_vals);
 
@@ -100,13 +104,16 @@ optim::de_int(arma::vec& init_out_vals, std::function<double (const arma::vec& v
         if (!std::isfinite(prop_objfn_val)) {
             prop_objfn_val = inf;
         }
-        
+
         objfn_vals(i) = prop_objfn_val;
 
         if (vals_bound) {
             X_next.row(i) = arma::trans( transform(X_next.row(i).t(), bounds_type, lower_bounds, upper_bounds) );
         }
     }
+#ifdef OPTIM_USE_TBB
+    );
+#endif
 
     double best_val = objfn_vals.min();
     double best_objfn_val_running = best_val;
@@ -130,10 +137,14 @@ optim::de_int(arma::vec& init_out_vals, std::function<double (const arma::vec& v
         //
         // loop over population
 
+#ifdef OPTIM_USE_TBB
+        tbb::parallel_for<size_t>(0, n_pop, [&](size_t i)
+#else
 #ifdef OPTIM_USE_OMP
         #pragma omp parallel for
 #endif
         for (size_t i=0; i < n_pop; i++)
+#endif
         {
             uint_t c_1, c_2, c_3;
 
@@ -165,8 +176,8 @@ optim::de_int(arma::vec& init_out_vals, std::function<double (const arma::vec& v
                     } else {
                         X_prop(k) = best_vec(k) + par_F*(X(c_1,k) - X(c_2,k));
                     }
-                } 
-                else 
+                }
+                else
                 {
                     X_prop(k) = X(i,k);
                 }
@@ -179,7 +190,7 @@ optim::de_int(arma::vec& init_out_vals, std::function<double (const arma::vec& v
             if (!std::isfinite(prop_objfn_val)) {
                 prop_objfn_val = inf;
             }
-            
+
             if (prop_objfn_val <= objfn_vals(i))
             {
                 X_next.row(i) = X_prop;
@@ -190,6 +201,9 @@ optim::de_int(arma::vec& init_out_vals, std::function<double (const arma::vec& v
                 X_next.row(i) = X.row(i);
             }
         }
+#ifdef OPTIM_USE_TBB
+        );
+#endif
 
         best_val = objfn_vals.min();
         best_vec = X_next.row( objfn_vals.index_min() );
@@ -204,9 +218,9 @@ optim::de_int(arma::vec& init_out_vals, std::function<double (const arma::vec& v
         }
 
         if (iter%check_freq == 0)
-        {   
+        {
             err = std::abs(best_objfn_val_running - best_objfn_val_check) / (1.0 + std::abs(best_objfn_val_running));
-            
+
             if (best_objfn_val_running < best_objfn_val_check) {
                 best_objfn_val_check = best_objfn_val_running;
             }
@@ -222,7 +236,7 @@ optim::de_int(arma::vec& init_out_vals, std::function<double (const arma::vec& v
     error_reporting(init_out_vals,best_sol_running.t(),opt_objfn,opt_data,success,err,err_tol,iter,n_gen,conv_failure_switch,settings_inp);
 
     //
-    
+
     return true;
 }
 
