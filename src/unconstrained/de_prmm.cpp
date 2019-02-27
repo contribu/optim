@@ -197,18 +197,19 @@ optim::de_prmm_int(arma::vec& init_out_vals, std::function<double (const arma::v
 
         X = X_next;
 
-        //
-        // first population: n_pop - n_pop_best
-
 #ifdef OPTIM_USE_TBB
         tbb::parallel_for<size_t>(0, n_pop - n_pop_best, [&](size_t i)
 #else
 #ifdef OPTIM_USE_OMP
         #pragma omp parallel for
 #endif
-        for (size_t i=0; i < n_pop - n_pop_best; i++)
+        for (size_t i=0; i < n_pop; i++)
 #endif
         {
+        if (i < n_pop - n_pop_best) {
+            //
+            // first population: n_pop - n_pop_best
+
             arma::vec rand_pars = arma::randu(4);
 
             if (rand_pars(0) < tau_F) {
@@ -274,22 +275,10 @@ optim::de_prmm_int(arma::vec& init_out_vals, std::function<double (const arma::v
                 X_next.row(i) = X.row(i);
             }
         }
-#ifdef OPTIM_USE_TBB
-        );
-#endif
+        else {
+            //
+            // second population
 
-        best_val_main = objfn_vals.rows(0,n_pop - n_pop_best - 1).min();
-        best_vec_main = X_next.rows(0,n_pop - n_pop_best - 1).row( objfn_vals.rows(0,n_pop - n_pop_best - 1).index_min() );
-
-        if (best_val_main < best_val_best) {
-            xchg_vec = best_vec_main;
-        }
-
-        //
-        // second population
-
-        for (size_t i = n_pop - n_pop_best; i < n_pop; i++)
-        {
             arma::vec rand_pars = arma::randu(4);
 
             if (rand_pars(0) < tau_F) {
@@ -340,6 +329,17 @@ optim::de_prmm_int(arma::vec& init_out_vals, std::function<double (const arma::v
             {
                 X_next.row(i) = X.row(i);
             }
+        }
+        }
+#ifdef OPTIM_USE_TBB
+        );
+#endif
+
+        best_val_main = objfn_vals.rows(0,n_pop - n_pop_best - 1).min();
+        best_vec_main = X_next.rows(0,n_pop - n_pop_best - 1).row( objfn_vals.rows(0,n_pop - n_pop_best - 1).index_min() );
+
+        if (best_val_main < best_val_best) {
+            xchg_vec = best_vec_main;
         }
 
         best_val_best = objfn_vals.rows(n_pop - n_pop_best, n_pop - 1).min();
